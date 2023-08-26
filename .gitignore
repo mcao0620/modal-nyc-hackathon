@@ -1,3 +1,4 @@
 tree-sitter-python
 build
 .env
+__pycache__

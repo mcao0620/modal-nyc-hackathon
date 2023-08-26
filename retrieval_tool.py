@@ -121,9 +121,13 @@ class ContextGrabber:
 
     def workflow(self,issue_title,issue_metadata):
         self.structure_context_hit_query(issue_title,issue_metadata)
+
         self.get_query_match_chunks(self.structured_query)
+
         self.get_chunk_context_chunks()
+
         self.all_chunks = list(set(self.semantically_similar_chunks + self.graph_neighbor_chunks))
         self.score_contex_chunks()
+
         response, selected_chunks, additional_chunks = self.compose_response(self.structured_query)
         return response, selected_chunks, additional_chunks

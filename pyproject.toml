@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "modal-nyc-hackathon"
+version = "0.1.0"
+description = ""
+authors = ["Colin Fortuner <cfortuner@gmail.com>"]
+readme = "README.md"
+packages = [{include = "modal_nyc_hackathon"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+github = "^1.2.7"
+openai = "^0.27.9"
+astroid = "^2.15.6"
+tree-sitter = "^0.20.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

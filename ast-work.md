@@ -22,7 +22,6 @@
 - Build indexing and storage
     - Simple file system storage to start
     - Lookup by file name/path
-
 - Implement query API
     - Functions to find AST by name/location
     - Return JSON AST

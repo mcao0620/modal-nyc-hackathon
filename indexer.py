@@ -8,6 +8,7 @@ import os
 from dataclasses import asdict
 from llama import node_parser
 from llama_index import Document
+import ast_util
 
 from model import CodeChunk
 
@@ -50,11 +51,19 @@ class SimpleRepoIndexer:
         chunk_paths = []
 
         print("Extracting file contents...")
+        print("Creating ASTs...")
+        ast_dicts = []
         # this gets the file contents
         for root, _, files in os.walk(self.local_repo_path):
             for file in files:
                 if file.endswith(".py"):
                     path = os.path.join(root, file)
+                    print("Creating AST for file:", path)
+                    ast_tree = ast_util.parse_to_ast(path)
+                    if ast_tree:
+                        ast_dict = ast_util.ast_to_dict(ast_tree)
+                        #print(ast_dict)
+                        ast_dicts.append(ast_dict)
                     with open(path, "r") as f:
                         content = f.read()
                         # file_contents.append(content)
@@ -70,23 +79,29 @@ class SimpleRepoIndexer:
                         )
 
         print("Creating embeddings...")
+        print("NANI")
+        print(os.getenv("OPENAI_API_KEY"))
         embedding_response = openai.Embedding.create(
             input=chunk_contents,
             model="text-embedding-ada-002",
             api_key=os.getenv("OPENAI_API_KEY"),
         )
+        
         embeddings = [emb["embedding"] for emb in embedding_response["data"]]
 
+
         documents = [
-            CodeChunk(path=path, chunk_contents=contents, embedding=emb)
-            for path, contents, emb in zip(chunk_paths, chunk_contents, embeddings)
+            CodeChunk(path=path, chunk_contents=contents,
+                      embedding=emb, ast_dict=ast_dict)
+            for path, contents, emb, ast_dict 
+            in zip(chunk_paths, chunk_contents, embeddings, ast_dicts)
         ]
         # return document dataclasses
         return documents
 
     def store_chunks_to_disk(self, documents):
         print("Storing chunks to disk...")
-        json_data = json.dumps([asdict(doc) for doc in documents])
+        json_data = json.dumps([asdict(doc) for doc in documents], cls=ast_util.ASTEncoder)
         with open("documents.json", "w") as json_file:
             json_file.write(json_data)
 

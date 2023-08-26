@@ -11,6 +11,9 @@ text_splitter = CodeSplitter(
 
 node_parser = SimpleNodeParser.from_defaults(text_splitter=text_splitter)
 
+def foo():
+    print('hello world')
+
 # nodes = node_parser.get_nodes_from_documents(
 #     documents=[
 #         Document(text="def foo():\n    print('hello world')\n\nfoo()")

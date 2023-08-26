@@ -3,6 +3,7 @@
 import json
 import openai
 import tiktoken
+from openai.embeddings_utils import cosine_similarity
 
 import os
 from dataclasses import asdict
@@ -109,6 +110,36 @@ class SimpleRepoIndexer:
         self.clone_repo()
         documents = self.create_embeddings()
         self.store_chunks_to_disk(documents)
+
+class VectorHit:
+    def __init__(self, document_json_path):
+        with open(document_json_path, "r") as json_file:
+            self.documents = json.load(json_file)
+        self.doc_lists = [doc["chunk_contents"] for doc in self.documents]
+        self.embeddings = [doc["embedding"] for doc in self.documents]
+        self.paths = [doc["path"] for doc in self.documents]
+    
+    def _cosine_sim(self, a, b):
+        return cosine_similarity(a, b)
+    
+    def get_query_chunks(self, query,top_k = 3):
+        query_embedding = get_embeddings(query)
+        sims = []
+        for i in range(len(self.doc_lists)):
+            sims.append(self._cosine_sim(query_embedding, self.embeddings[i]))
+        
+        top_k_indices = sorted(range(len(sims)), key=lambda i: sims[i])[-top_k:]
+        return [self.doc_lists[i] for i in top_k_indices]
+
+    def get_similar_chunks(self, code_chunk, top_k = 3):
+        chunk_idx = self.doc_lists.index(code_chunk)
+        chunk_embedding = self.embeddings[chunk_idx]
+        sims = []
+        for i in range(len(self.doc_lists)):
+            sims.append(self._cosine_sim(chunk_embedding, self.embeddings[i]))
+        
+        top_k_indices = sorted(range(len(sims)), key=lambda i: sims[i])[-top_k:]
+        return [self.doc_lists[i] for i in top_k_indices]
 
 
 if __name__ == "__main__":

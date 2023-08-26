@@ -1,0 +1,16 @@
+digraph G {
+    graph [pad="0.5", nodesep="0.5", ranksep="2"];
+    node [shape=box];
+    current_cloning [label="<clone_repo> function | Current behavior: Clones first level of repo", fillcolor=red, style=filled];
+    updated_cloning [label="<clone_repo> function | Updated behavior: Clones entire repo depth", fillcolor=lightblue, style=filled];
+    os_command [label="os.system command | Needs to have --depth parameter removed", fillcolor=yellow, style=filled];
+    current_cloning -> updated_cloning -> os_command;
+    label = "
+    
+Changes needed in clone_repo function to clone entire depth of repo as per user request.
+
+Red: Current problematic part
+Yellow: Code adjustment needed
+Light Blue: Desired outcome";
+    fontsize = 20;
+}

@@ -1,0 +1,725 @@
+# Copyright (c) 2023 ETH Zurich.
+#                    All rights reserved.
+#
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+#
+# main author: Nils Blach
+# contributions: Robert Gerstenberger
+
+import json
+import os
+import matplotlib.pyplot as plt
+
+
+def get_complete_results(base_directory):
+    results_complete = {}
+    for folder_name in os.listdir(base_directory):
+        folder_path = os.path.join(base_directory, folder_name)
+        if os.path.isdir(folder_path):
+            results_complete[folder_name] = []
+            for file_name in os.listdir(folder_path):
+                if file_name.endswith(".json"):
+                    file_path = os.path.join(folder_path, file_name)
+                    with open(file_path, "r") as f:
+                        data = json.load(f)
+                        results_complete[folder_name].append(
+                            {"key": int(file_name.split(".")[0]), "data": data}
+                        )
+        for key in results_complete.keys():
+            results_complete[key] = sorted(
+                results_complete[key], key=lambda x: x["key"]
+            )
+    return results_complete
+def get_final_scores(results_complete):
+    scores = {}
+    for method in results_complete.keys():
+        scores[method] = []
+        for result in results_complete[method]:
+            score = 100
+            solved = False
+            cost = 1
+            prompt_tokens = 0
+            completion_tokens = 0
+            for op in result["data"]:
+                if "operation" in op and op["operation"] == "ground_truth_evaluator":
+                    try:
+                        score = min(op["scores"])
+                        solved = any(op["problem_solved"])
+                    except:
+                        continue
+                if "cost" in op:
+                    cost = op["cost"]
+                    prompt_tokens = op["prompt_tokens"]
+                    completion_tokens = op["completion_tokens"]
+            scores[method].append(
+                [result["key"], score, solved, prompt_tokens, completion_tokens, cost]
+            )
+        scores[method] = sorted(scores[method], key=lambda x: x[0])
+    return scores
+def get_final_scores_doc_merge(results_complete):
+    scores = {}
+    for method in results_complete.keys():
+        scores[method] = []
+        for result in results_complete[method]:
+            score = 0
+            solved = False
+            cost = 1
+            prompt_tokens = 0
+            completion_tokens = 0
+            for op in reversed(result["data"]):
+                if "cost" in op:
+                    cost = op["cost"]
+                    prompt_tokens = op["prompt_tokens"]
+                    completion_tokens = op["completion_tokens"]
+                if "operation" in op and op["operation"] == "score":
+                    try:
+                        score = max(op["scores"])
+                        break
+                    except:
+                        continue
+            scores[method].append(
+                [result["key"], score, solved, prompt_tokens, completion_tokens, cost]
+            )
+        scores[method] = sorted(scores[method], key=lambda x: x[0])
+    return scores
+
+
+def get_plotting_data(base_directory, score_method):
+    results_complete = get_complete_results(base_directory)
+    scores = score_method(results_complete)
+    results_plotting = {
+        method: {
+            "scores": [x[1] for x in scores[method]],
+            "solved": sum([1 for x in scores[method] if x[2]]),
+            "costs": [x[5] for x in scores[method]],
+        }
+        for method in scores.keys()
+    }
+    return results_plotting
+def plot_results(
+    name,
+    results,
+    methods_order=["io", "cot", "tot", "tot2", "tog"],
+    methods_labels=["IO", "CoT", "ToT", "ToT2", "GoT"],
+    model="GPT-3.5",
+    length=32,
+    y_lower=0,
+    y_upper=16,
+    cost_upper=1.8,
+    display_solved=True,
+    annotation_offset=1,
+    display_left_ylabel=False,
+    display_right_ylabel=False,
+):
+methods_order = [method for method in methods_order if method in results]
+    # Extract scores based on the order
+    if name == "set_intersection":
+        scores_ordered = [
+            [min(score, length) for score in results[method]["scores"] if score != 1000]
+            for method in methods_order
+        ]
+    elif name == "sorting":
+        scores_ordered = [
+            [
+                min(score, length)
+                for score in results[method]["scores"]
+                if score != 100 and score != 300
+            ]
+            for method in methods_order
+        ]
+    elif name == "keyword_counting":
+        scores_ordered = [
+            [
+                score
+                for score in results[method]["scores"]
+                if score != 100 and score != 300
+            ]
+            for method in methods_order
+        ]
+    elif name == "document_merging":
+        scores_ordered = [
+            [score for score in results[method]["scores"]] for method in methods_order
+        ]
+    total_costs = [sum(results[method]["costs"]) for method in methods_order]
+
+    # Create figure and axis
+    if name == "keyword_counting" or name == "document_merging":
+        fig, ax = plt.subplots(dpi=150, figsize=(3.75, 5))
+    else:
+        fig, ax = plt.subplots(dpi=150, figsize=(2.5, 5))
+
+    # Create boxplots
+    positions = range(1, len(methods_order) + 1)
+    ax.boxplot(scores_ordered, positions=positions)
+
+    fig_fontsize = 12
+
+    # Set the ticks and labels
+plt.yticks(fontsize=fig_fontsize)
+    ax.set_xticks(range(1, len(methods_order) + 1))
+    ax.set_xticks(range(1, len(methods_order) + 1))
+    if name == "keyword_counting":
+        ax.set_xticklabels(methods_labels, fontsize=10)
+    else:
+        ax.set_xticklabels(methods_labels, fontsize=fig_fontsize)
+
+    if name == "document_merging":
+        ax.set_ylim(y_lower, 12 if display_solved else 9.75)
+    else:
+        ax.set_ylim(y_lower, (y_upper + 2) if display_solved else y_upper + 1)
+
+    if name == "sorting" or name == "set_intersection":
+        ax1_yticks = range(
+            y_lower, y_upper + 1, 2 if length < 48 else (4 if length < 96 else 8)
+        )
+        ax.set_yticks(ax1_yticks)
+
+    if display_left_ylabel:
+        if name == "keyword_counting":
+            ax.set_ylabel(
+                f"Number of errors; the lower the better", fontsize=fig_fontsize
+            )
+        elif name == "document_merging":
+            ax.set_ylabel(
+                f"Score (out of 10); the higher the better", fontsize=fig_fontsize
+            )
+        else:
+            ax.set_ylabel(
+                f"#incorrect elements; the lower the better", fontsize=fig_fontsize
+            )
+
+    if name == "sorting" or name == "set_intersection":
+        ax.set_title(f"{length} elements")
+
+    ax2 = ax.twinx()
+    ax2.bar(positions, total_costs, alpha=0.5, color="blue", label="Total Cost ($)")
+    ax2.yaxis.set_tick_params(colors="#1919ff", labelsize=fig_fontsize)
+ax2.set_ylim(0, cost_upper)
+    number_of_ticks = len(ax.get_yticks())
+    tick_interval = cost_upper / (number_of_ticks)
+    ax2_ticks = [tick_interval * i for i in range(number_of_ticks)]
+
+    # Set custom tick positions for ax2
+    ax2.set_yticks(ax2_ticks)
+
+    if display_right_ylabel:
+        ax2.set_ylabel(
+            "Total Cost ($); the lower the better",
+            color="#1919ff",
+            fontsize=fig_fontsize,
+        )
+
+    if display_solved:
+        annotation_height = y_upper + annotation_offset
+        count = 1
+        for method in methods_order:
+            if method not in results:
+                continue
+            solved = results[method]["solved"]
+            ax.text(
+                count,
+                annotation_height,
+                f"{solved}",
+                ha="center",
+                va="bottom",
+                fontsize=fig_fontsize,
+            )
+            count += 1
+
+    model = model.replace(".", "").replace("-", "").lower()
+    if name == "keyword_counting" or name == "document_merging":
+        fig.savefig(f"{name}_{model}.pdf", bbox_inches="tight")
+    else:
+        fig.savefig(f"{name}_{model}_{length}.pdf", bbox_inches="tight")
+plot_results(
+    "set_intersection",
+    get_plotting_data("set_intersection_gpt35_032", get_final_scores),
+    methods_order=["io", "cot", "tot", "tot2", "tog2"],
+    length=32,
+    y_upper=19,
+    cost_upper=2,
+    display_solved=True,
+    annotation_offset=0.5,
+    display_left_ylabel=True,
+    display_right_ylabel=True,
+)
+
+plot_results(
+    "set_intersection",
+    get_plotting_data("set_intersection_gpt35_064", get_final_scores),
+    methods_order=["io", "cot", "tot", "tot2", "tog2"],
+    length=64,
+    y_upper=32,
+    cost_upper=5.4,
+    display_solved=True,
+    annotation_offset=0.2,
+    display_left_ylabel=True,
+    display_right_ylabel=True,
+)
+
+plot_results(
+    "set_intersection",
+    get_plotting_data("set_intersection_gpt35_128", get_final_scores),
+    methods_order=["io", "cot", "tot", "tot2", "tog2"],
+    length=128,
+    y_upper=94,
+    cost_upper=12,
+    display_solved=True,
+    annotation_offset=-3,
+    display_left_ylabel=True,
+    display_right_ylabel=True,
+)
+
+plot_results(
+    "sorting",
+    get_plotting_data("sorting_gpt35_032", get_final_scores),
+    length=32,
+    display_solved=False,
+    annotation_offset=0.5,
+    display_left_ylabel=True,
+    display_right_ylabel=True,
+)
+
+plot_results(
+    "sorting",
+    get_plotting_data("sorting_gpt35_064", get_final_scores),
+    length=64,
+    y_upper=64,
+    cost_upper=5.1,
+    display_solved=False,
+    display_left_ylabel=True,
+    display_right_ylabel=True,
+)
+plot_results(
+    "sorting",
+    get_plotting_data("sorting_gpt35_128", get_final_scores),
+    length=128,
+    y_upper=128,
+    cost_upper=17,
+    display_solved=False,
+    display_left_ylabel=True,
+    display_right_ylabel=True,
+)
+
+plot_results(
+    "keyword_counting",
+    get_plotting_data("keyword_counting_gpt35", get_final_scores),
+    methods_order=["io", "cot", "tot", "tot2", "gsp4", "gsp8", "gspx"],
+    methods_labels=["IO", "CoT", "ToT", "ToT2", "GoT4", "GoT8", "GoTx"],
+    y_upper=35,
+    cost_upper=9,
+    display_solved=True,
+    annotation_offset=-0.3,
+    display_left_ylabel=True,
+    display_right_ylabel=True,
+)
+
+plot_results(
+    "document_merging",
+    get_plotting_data("document_merging_gpt35_16k", get_final_scores_doc_merge),
+    methods_order=["io", "cot", "tot", "gsp", "gsp2"],
+    methods_labels=["IO", "CoT", "ToT", "GoT", "GoT2"],
+    y_upper=10,
+    cost_upper=15,
+    display_solved=False,
+    display_left_ylabel=True,
+    display_right_ylabel=True,
+)
+# Copyright (c) 2023 ETH Zurich.
+#                    All rights reserved.
+#
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+#
+# main authors: Robert Gerstenberger, Nils Blach
+
+from __future__ import annotations
+from abc import ABC, abstractmethod
+from typing import Dict, List
+class Prompter(ABC):
+"""
+    Abstract base class that defines the interface for all prompters.
+    Prompters are used to generate the prompts for the language models.
+    """
+
+    @abstractmethod
+    def aggregation_prompt(self, state_dicts: List[Dict], **kwargs) -> str:
+        """
+        Generate a aggregation prompt for the language model.
+
+        :param state_dicts: The thought states that should be aggregated.
+        :type state_dicts: List[Dict]
+        :param kwargs: Additional keyword arguments.
+        :return: The aggregation prompt.
+        :rtype: str
+        """
+        pass
+
+    @abstractmethod
+    def improve_prompt(self, **kwargs) -> str:
+        """
+        Generate an improve prompt for the language model.
+        The thought state is unpacked to allow for additional keyword arguments
+        and concrete implementations to specify required arguments explicitly.
+
+        :param kwargs: Additional keyword arguments.
+        :return: The improve prompt.
+        :rtype: str
+        """
+        pass
+@abstractmethod
+    def generate_prompt(self, num_branches: int, **kwargs) -> str:
+        """
+        Generate a generate prompt for the language model.
+        The thought state is unpacked to allow for additional keyword arguments
+        and concrete implementations to specify required arguments explicitly.
+
+        :param num_branches: The number of responses the prompt should ask the LM to generate.
+        :type num_branches: int
+        :param kwargs: Additional keyword arguments.
+        :return: The generate prompt.
+        :rtype: str
+        """
+        pass
+
+    @abstractmethod
+    def validation_prompt(self, **kwargs) -> str:
+        """
+        Generate a validation prompt for the language model.
+        The thought state is unpacked to allow for additional keyword arguments
+        and concrete implementations to specify required arguments explicitly.
+
+        :param kwargs: Additional keyword arguments.
+        :return: The validation prompt.
+        :rtype: str
+        """
+        pass
+
+    @abstractmethod
+    def score_prompt(self, state_dicts: List[Dict], **kwargs) -> str:
+        """
+        Generate a score prompt for the language model.
+
+        :param state_dicts: The thought states that should be scored,
+                            if more than one, they should be scored together.
+        :type state_dicts: List[Dict]
+        :param kwargs: Additional keyword arguments.
+        :return: The score prompt.
+        :rtype: str
+        """
+        pass
+from .prompter import Prompter
+from .parser import Parser
+# Copyright (c) 2023 ETH Zurich.
+#                    All rights reserved.
+#
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+#
+# main authors: Robert Gerstenberger, Nils Blach
+
+from __future__ import annotations
+from abc import ABC, abstractmethod
+from typing import Dict, List, Union
+class Parser(ABC):
+"""
+    Abstract base class that defines the interface for all parsers.
+    Parsers are used to parse the responses from the language models.
+    """
+
+    @abstractmethod
+    def parse_aggregation_answer(
+        self, states: List[Dict], texts: List[str]
+    ) -> Union[Dict, List[Dict]]:
+        """
+        Parse the response from the language model for a aggregation prompt.
+
+        :param states: The thought states used to generate the prompt.
+        :type states: List[Dict]
+        :param texts: The responses to the prompt from the language model.
+        :type texts: List[str]
+        :return: The new thought states after parsing the response from the language model.
+        :rtype: Union[Dict, List[Dict]]
+        """
+        pass
+
+    @abstractmethod
+    def parse_improve_answer(self, state: Dict, texts: List[str]) -> Dict:
+        """
+        Parse the response from the language model for an improve prompt.
+
+        :param state: The thought state used to generate the prompt.
+        :type state: Dict
+        :param texts: The responses to the prompt from the language model.
+        :type texts: List[str]
+        :return: The new thought state after parsing the response from the language model.
+        :rtype: Dict
+        """
+        pass
+@abstractmethod
+    def parse_generate_answer(self, state: Dict, texts: List[str]) -> List[Dict]:
+        """
+        Parse the response from the language model for a generate prompt.
+
+        :param state: The thought state used to generate the prompt.
+        :type state: Dict
+        :param texts: The responses to the prompt from the language model.
+        :type texts: List[str]
+        :return: The new thought states after parsing the response from the language model.
+        :rtype: List[Dict]
+        """
+        pass
+
+    @abstractmethod
+    def parse_validation_answer(self, state: Dict, texts: List[str]) -> bool:
+        """
+        Parse the response from the language model for a validation prompt.
+
+        :param state: The thought state used to generate the prompt.
+        :type state: Dict
+        :param texts: The responses to the prompt from the language model.
+        :type texts: List[str]
+        :return: Whether the thought state is valid or not.
+        :rtype: bool
+        """
+        pass
+@abstractmethod
+    def parse_score_answer(self, states: List[Dict], texts: List[str]) -> List[float]:
+        """
+        Parse the response from the language model for a score prompt.
+
+        :param states: The thought states used to generate the prompt.
+        :type states: List[Dict]
+        :param texts: The responses to the prompt from the language model.
+        :type texts: List[str]
+        :return: The scores for the thought states.
+        :rtype: List[float]
+        """
+        pass
+# Copyright (c) 2023 ETH Zurich.
+#                    All rights reserved.
+#
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+#
+# main author: Nils Blach
+
+from __future__ import annotations
+from typing import List
+
+from graph_of_thoughts.operations.operations import Operation
+class GraphOfOperations:
+"""
+    Represents the Graph of Operations, which prescribes the execution plan of thought operations.
+    """
+
+    def __init__(self) -> None:
+        """
+        Initializes a new Graph of Operations instance with empty operations, roots, and leaves.
+        The roots are the entry points in the graph with no predecessors.
+        The leaves are the exit points in the graph with no successors.
+        """
+        self.operations: List[Operation] = []
+        self.roots: List[Operation] = []
+        self.leaves: List[Operation] = []
+
+    def append_operation(self, operation: Operation) -> None:
+        """
+        Appends an operation to all leaves in the graph and updates the relationships.
+
+        :param operation: The operation to append.
+        :type operation: Operation
+        """
+        self.operations.append(operation)
+
+        if len(self.roots) == 0:
+            self.roots = [operation]
+        else:
+            for leave in self.leaves:
+                leave.add_successor(operation)
+
+        self.leaves = [operation]
+def add_operation(self, operation: Operation) -> None:
+        """
+        Add an operation to the graph considering its predecessors and successors.
+        Adjust roots and leaves based on the added operation's position within the graph.
+
+        :param operation: The operation to add.
+        :type operation: Operation
+        """
+        self.operations.append(operation)
+        if len(self.roots) == 0:
+            self.roots = [operation]
+            self.leaves = [operation]
+            assert (
+                len(operation.predecessors) == 0
+            ), "First operation should have no predecessors"
+        else:
+            if len(operation.predecessors) == 0:
+                self.roots.append(operation)
+            for predecessor in operation.predecessors:
+                if predecessor in self.leaves:
+                    self.leaves.remove(predecessor)
+            if len(operation.successors) == 0:
+                self.leaves.append(operation)
+from .thought import Thought
+from .graph_of_operations import GraphOfOperations
+from .operations import (
+    Operation,
+    Score,
+    ValidateAndImprove,
+    Generate,
+    Aggregate,
+    KeepBestN,
+    KeepValid,
+    Selector,
+    GroundTruth,
+    Improve,
+)
+# Copyright (c) 2023 ETH Zurich.
+#                    All rights reserved.
+#
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+#
+# main author: Nils Blach
+
+from __future__ import annotations
+import logging
+from enum import Enum
+from typing import List, Iterator, Dict, Callable, Union
+from abc import ABC, abstractmethod
+import itertools
+
+from graph_of_thoughts.operations.thought import Thought
+from graph_of_thoughts.controller.abstract_language_model import AbstractLanguageModel
+from graph_of_thoughts.prompter import Prompter
+from graph_of_thoughts.parser import Parser
+
+
+class OperationType(Enum):
+    """
+    Enum to represent different operation types that can be used as unique identifiers.
+    """
+
+    score: int = 0
+    validate_and_improve: int = 1
+    generate: int = 2
+    improve: int = 3
+    aggregate: int = 4
+    keep_best_n: int = 5
+    keep_valid: int = 6
+    ground_truth_evaluator: int = 7
+    selector: int = 8
+class Operation(ABC):
+"""
+    Abstract base class that defines the interface for all operations.
+    """
+
+    _ids: Iterator[int] = itertools.count(0)
+
+    operation_type: OperationType = None
+
+    def __init__(self) -> None:
+        """
+        Initializes a new Operation instance with a unique id, and empty predecessors and successors.
+        """
+        self.logger: logging.Logger = logging.getLogger(self.__class__.__name__)
+        self.id: int = next(Operation._ids)
+        self.predecessors: List[Operation] = []
+        self.successors: List[Operation] = []
+        self.executed: bool = False
+
+    def can_be_executed(self) -> bool:
+        """
+        Checks if the operation can be executed based on its predecessors.
+
+        :return: True if all predecessors have been executed, False otherwise.
+        :rtype: bool
+        """
+        return all(predecessor.executed for predecessor in self.predecessors)
+
+    def get_previous_thoughts(self) -> List[Thought]:
+        """
+        Iterates over all predecessors and aggregates their thoughts.
+
+        :return: A list of all thoughts from the predecessors.
+        :rtype: List[Thought]
+        """
+        previous_thoughts: List[Thought] = [
+            thought
+            for predecessor in self.predecessors
+            for thought in predecessor.get_thoughts()
+        ]
+
+        return previous_thoughts
+def add_predecessor(self, operation: Operation) -> None:
+        """
+        Add a preceding operation and update the relationships.
+
+        :param operation: The operation to be set as a predecessor.
+        :type operation: Operation
+        """
+        self.predecessors.append(operation)
+        operation.successors.append(self)
+
+    def add_successor(self, operation: Operation) -> None:
+        """
+        Add a succeeding operation and update the relationships.
+
+        :param operation: The operation to be set as a successor.
+        :type operation: Operation
+        """
+        self.successors.append(operation)
+        operation.predecessors.append(self)
+def execute(
+        self, lm: AbstractLanguageModel, prompter: Prompter, parser: Parser, **kwargs
+    ) -> None:
+        """
+        Execute the operation, assuring that all predecessors have been executed.
+
+        :param lm: The language model to be used.
+        :type lm: AbstractLanguageModel
+        :param prompter: The prompter for crafting prompts.
+        :type prompter: Prompter
+        :param parser: The parser for parsing responses.
+        :type parser: Parser
+        :param kwargs: Additional parameters for execution.
+        :raises AssertionError: If not all predecessors have been executed.
+        """
+        assert self.can_be_executed(), "Not all predecessors have been executed"
+        self.logger.info(
+            "Executing operation %d of type %s", self.id, self.operation_type
+        )
+        self._execute(lm, prompter, parser, **kwargs)
+        self.logger.debug("Operation %d executed", self.id)
+        self.executed = True
+@abstractmethod
+    def _execute(
+        self, lm: AbstractLanguageModel, prompter: Prompter, parser: Parser, **kwargs
+    ) -> None:
+        """
+        Abstract method for the actual execution of the operation.
+        This should be implemented in derived classes.
+
+        :param lm: The language model to be used.
+        :type lm: AbstractLanguageModel
+        :param prompter: The prompter for crafting prompts.
+        :type prompter: Prompter
+        :param parser: The parser for parsing responses.
+        :type parser: Parser
+        :param kwargs: Additional parameters for execution.
+        """
+        pass
+
+    @abstractmethod
+    def get_thoughts(self) -> List[Thought]:
+        """
+        Abstract method to retrieve the thoughts associated with the operation.
+        This should be implemented in derived classes.
+
+        :return: List of associated thoughts.
+        :rtype: List[Thought]
+        """
+        pass

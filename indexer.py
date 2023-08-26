@@ -38,13 +38,20 @@ class SimpleRepoIndexer:
     def __init__(self, repo_url, token_counter, local_dir="/tmp"):
         self.repo_url = repo_url
         self.local_dir = local_dir
-        self.repo_name = self.repo_url.split("/")[-1].replace(".git", "")
+        self.repo_name = "graph-of-thoughts" 
         self.local_repo_path = os.path.join(self.local_dir, self.repo_name)
         self.token_counter = token_counter
 
     def clone_repo(self):
-        print("Cloning repo...")
-        os.system(f"git clone {self.repo_url} {self.local_repo_path}")
+        print(f"Cloning repo to {self.local_repo_path}...")
+        print("repo name:", self.repo_name)
+        new_path = os.path.join(self.local_dir, self.repo_name)
+        os.system(f"git clone {self.repo_url} {new_path}")
+
+        self.local_repo_path = new_path
+        print(self.local_repo_path)
+        print("Done cloning repo.")
+        
 
     def create_embeddings(self):
         # todo: Figure out how to stroe the file contents
@@ -56,6 +63,7 @@ class SimpleRepoIndexer:
         ast_dicts = []
         # this gets the file contents
         for root, _, files in os.walk(self.local_repo_path):
+            print("root:", root)
             for file in files:
                 if file.endswith(".py"):
                     path = os.path.join(root, file)
@@ -71,6 +79,7 @@ class SimpleRepoIndexer:
                         chunks = node_parser.get_nodes_from_documents(
                             documents=[Document(text=content)]
                         )
+
                         chunk_contents.extend([chunk.text for chunk in chunks])
                         chunk_paths.extend(
                             [
@@ -82,6 +91,13 @@ class SimpleRepoIndexer:
         print("Creating embeddings...")
         print("NANI")
         print(os.getenv("OPENAI_API_KEY"))
+
+        # Write chunk contents to debug file
+        for chunk in chunk_contents:
+            print(chunk)
+
+        
+
         embedding_response = openai.Embedding.create(
             input=chunk_contents,
             model="text-embedding-ada-002",
@@ -97,6 +113,13 @@ class SimpleRepoIndexer:
             for path, contents, emb, ast_dict 
             in zip(chunk_paths, chunk_contents, embeddings, ast_dicts)
         ]
+
+        # Write documents to filesystem as debug documents
+        with open("debug_documents.txt", "w") as debug_file:
+            for doc in documents:
+                debug_file.write(str(doc) + "\n")
+        
+
         # return document dataclasses
         return documents
 
@@ -115,7 +138,13 @@ class VectorHit:
     def __init__(self, document_json_path):
         with open(document_json_path, "r") as json_file:
             self.documents = json.load(json_file)
+
         self.doc_lists = [doc["chunk_contents"] for doc in self.documents]
+        with open('chunk_contents.txt', 'w') as f:
+            for doc in self.documents:
+                f.write(doc["chunk_contents"] + "\n")
+
+
         self.embeddings = [doc["embedding"] for doc in self.documents]
         self.paths = [doc["path"] for doc in self.documents]
     

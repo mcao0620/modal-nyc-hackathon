@@ -62,6 +62,7 @@ class ContextGrabber:
         #keyword search for issue metadata
         kws = issue_title.split(" ") +  issue_metadata.split(" ")
         kw_chunks = []
+
         for kw in kws:
             for doc in self.VH.doc_lists:
                 if kw in doc:

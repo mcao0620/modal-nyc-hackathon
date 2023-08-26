@@ -7,3 +7,4 @@ class CodeChunk:
     path: str
     chunk_contents: str
     embedding: List[List[float]]
+    ast_dict: dict

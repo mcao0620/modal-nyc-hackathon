@@ -4,6 +4,7 @@ import json
 from astroid import TypeInferenceVisitor, InferenceError
 from tree_sitter import Language, Parser
 
+
 class UnifiedASTVisitor(ast.NodeVisitor):
     def __init__(self, tree_sitter_ast):
         self.dependencies = []

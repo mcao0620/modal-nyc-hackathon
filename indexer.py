@@ -2,6 +2,8 @@
 
 import json
 import openai
+import os
+openai.api_key = os.environ["OPENAI_API_KEY"]
 import tiktoken
 from openai.embeddings_utils import cosine_similarity
 
@@ -38,7 +40,11 @@ class SimpleRepoIndexer:
     def __init__(self, repo_url, token_counter, local_dir="/tmp"):
         self.repo_url = repo_url
         self.local_dir = local_dir
+<<<<<<< Updated upstream
         self.repo_name = "graph-of-thoughts" 
+=======
+        self.repo_name = "placeholder"#self.repo_url.split("/")[-1].replace(".git", "")
+>>>>>>> Stashed changes
         self.local_repo_path = os.path.join(self.local_dir, self.repo_name)
         self.token_counter = token_counter
 

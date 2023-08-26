@@ -1,4 +1,6 @@
 import openai
+import os
+openai.api_key = os.environ["OPENAI_API_KEY"]
 
 from tree_sitter import Language
 import graphviz as gv
@@ -8,7 +10,7 @@ from llama_index.chat_engine import SimpleChatEngine
 
 from llama_index.agent import OpenAIAgent
 from llama_index.tools.function_tool import FunctionTool
-import os
+
 
 with open('.env') as f:
     for line in f:

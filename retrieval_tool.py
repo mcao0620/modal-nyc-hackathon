@@ -8,8 +8,9 @@
     # get_similar_chunks(self, code_chunk, top_k = 3)
 from indexer import VectorHit
 from graph_parser import GraphNeighborHit
-
+import os
 import openai
+openai.api_key = os.environ["OPENAI_API_KEY"]
 import numpy as np
 import tiktoken
 # Fill it in locally 5:20
@@ -131,4 +132,5 @@ class ContextGrabber:
         self.score_contex_chunks()
 
         response, selected_chunks, additional_chunks = self.compose_response(self.structured_query)
+        
         return response, selected_chunks, additional_chunks

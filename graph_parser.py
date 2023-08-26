@@ -75,7 +75,7 @@ class SimpleASTGraphBuilder:
     def __init__(self, repo_url, token_counter, local_dir="/tmp"):
         self.repo_url = repo_url
         self.local_dir = local_dir
-        self.repo_name = self.repo_url.split("/")[-1].replace(".git", "")
+        self.repo_name = "placeholder"#self.repo_url.split("/")[-1].replace(".git", "")
         self.local_repo_path = os.path.join(self.local_dir, self.repo_name)
         self.token_counter = token_counter
 

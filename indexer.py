@@ -2,19 +2,17 @@
 
 import json
 import openai
-import github
 import tiktoken
 
 import os
 from dataclasses import asdict
-from llama_index.langchain_helpers.text_splitter import CodeSplitter
+from llama import node_parser
+from llama_index import Document
 
 from model import CodeChunk
 
-openai.api_key = "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"
 
-
-def get_embedding(text, model="text-embedding-ada-002"):
+def get_embeddings(text, model="text-embedding-ada-002"):
     embedding = openai.Embedding.create(
         input=text, model=model, api_key=os.getenv("OPENAI_API_KEY")
     )
@@ -43,8 +41,6 @@ class SimpleRepoIndexer:
         self.token_counter = token_counter
 
     def clone_repo(self):
-        # g = github.
-        # repo = g.get_repo(self.repo_url)
         print("Cloning repo...")
         os.system(f"git clone {self.repo_url} {self.local_repo_path}")
 
@@ -62,30 +58,34 @@ class SimpleRepoIndexer:
                     with open(path, "r") as f:
                         content = f.read()
                         # file_contents.append(content)
-                        chunk_paths.append(
-                            path.removeprefix(f"{self.local_repo_path}/")
+                        chunks = node_parser.get_nodes_from_documents(
+                            documents=[Document(text=content)]
                         )
-        # TODO: This isn't probably working,
-        # this creates the embeddings
+                        chunk_contents.extend([chunk.text for chunk in chunks])
+                        chunk_paths.extend(
+                            [
+                                path.removeprefix(f"{self.local_repo_path}/")
+                                for _ in range(len(chunks))
+                            ]
+                        )
+
         print("Creating embeddings...")
-        embeddings = []
-        new_paths = []
-        new_contents = []
-        for content in file_contents:
-            fragments = split_by_token(content, self.token_counter)
-            for fragment in fragments:
-                embeddings.append(get_embedding(fragment))
-                new_paths.append(path)
-                new_contents.append(fragment)
+        embedding_response = openai.Embedding.create(
+            input=chunk_contents,
+            model="text-embedding-ada-002",
+            api_key=os.getenv("OPENAI_API_KEY"),
+        )
+        embeddings = [emb["embedding"] for emb in embedding_response["data"]]
 
         documents = [
-            CodeDocument(path=path, file_contents=contents, embedding=emb)
-            for path, contents, emb in zip(new_paths, new_contents, embeddings)
+            CodeChunk(path=path, chunk_contents=contents, embedding=emb)
+            for path, contents, emb in zip(chunk_paths, chunk_contents, embeddings)
         ]
         # return document dataclasses
         return documents
 
-    def store_docs_to_disk(self, documents):
+    def store_chunks_to_disk(self, documents):
+        print("Storing chunks to disk...")
         json_data = json.dumps([asdict(doc) for doc in documents])
         with open("documents.json", "w") as json_file:
             json_file.write(json_data)
@@ -93,7 +93,7 @@ class SimpleRepoIndexer:
     def index_repo(self):
         self.clone_repo()
         documents = self.create_embeddings()
-        self.store_docs_to_disk(documents)
+        self.store_chunks_to_disk(documents)
 
 
 if __name__ == "__main__":

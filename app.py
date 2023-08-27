@@ -5,7 +5,8 @@ import os
 import random
 import time
 
-from local import run
+from local import build_documents_and_graph, run
+
 
 def create_ticket(repo_url, context):
     description = """# Hello world! ```code goes here```"""
@@ -76,9 +77,15 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 
-def respond(response, new_question_state):
+def add_user_input(user_input):
+    # Add user message to chat history
+    st.session_state.messages.append({"role": "user", "content": user_input})
+    # Display user message in chat message container
+    with st.chat_message("user"):
+        st.markdown(user_input)
 
 
+def respond(response):
     # Display assistant response in chat message container
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
@@ -94,30 +101,90 @@ def respond(response, new_question_state):
 
     # Add assistant response to chat history
     st.session_state.messages.append({"role": "assistant", "content": full_response})
-    st.session_state.question_state = new_question_state
 
 
-if "question_state" not in st.session_state:
-    if user_input := st.chat_input("https://"):
-        # Add user message to chat history
-        st.session_state.messages.append({"role": "user", "content": user_input})
-        # Display user message in chat message container
+prompt_input = st.chat_input("Type here")
+if prompt_input:
+    add_user_input(prompt_input)
+    if "question_state" not in st.session_state:
+        respond("Okay, one moment...")
+        build_documents_and_graph(prompt_input)
+        respond("Please describe the changes you would like to make:")
+        st.session_state.question_state = "QUERY_ISSUE"
+    elif st.session_state.question_state == "QUERY_ISSUE":
+        st.session_state.issue_title = prompt_input
+        respond("What metadata or entities are helpful/relevant to this change?")
+        st.session_state.question_state = "QUERY_METADATA"
+    elif st.session_state.question_state == "QUERY_METADATA":
+        respond("Okay, one moment...")
+        response, relevant_chunks, helpful_chunks = run(
+            st.session_state.issue_title, prompt_input
+        )
         with st.chat_message("assistant"):
-            response = "Okay, one moment..." 
-            st.session_state.messages.append({"role": "assistant", "content": response}) 
-            st.markdown(response) 
+            r = ""
 
-        with st.chat_message("user"):
-            st.markdown(user_input) 
-            st.session_state.url = user_input
-            respond("Please describe the changes you would like to make:", "QUERY_CONTEXT")
-            run(st.session_state.url)
+            r += "# Helpful chunks: \n\n"
+            for chunk in helpful_chunks:
+                r += f"```{chunk}```"
+                r += "\n\n\n"
 
-elif st.session_state.question_state == "QUERY_CONTEXT":
-    if user_input := st.chat_input("What's going on?"):
-        respond("What next?", "QUERY_NEXT")
-        # st.session_state.question_state = ""
+            r += "# Relevant chunks: \n\n"
+            for chunk in relevant_chunks:
+                r += f"```{chunk}```"
+                r += "\n\n\n"
 
-elif st.session_state.question_state == "QUERY_NEXT":
-    if user_input := st.chat_input("What next?"):
-        pass
+            st.session_state.messages.append({"role": "assistant", "content": r})
+            st.markdown(r)
+        respond("Woo!")
+        st.session_state.question_state = "CREATE_TICKET"
+    elif st.session_state.question_state == "CREATE_TICKET":
+        respond("You've made it to the end!")
+
+
+#     user_input = st.chat_input("https://")
+#     if user_input:
+#         add_user_input(user_input)
+#         st.session_state.url = user_input
+#         st.session_state.question_state = "QUERY_REPO"
+
+#     st.session_state.changes = st.chat_input(
+#         "Please describe the changes you would like to make:"
+#     )
+#     if st.session_state.changes:
+#         st.session_state.question_state = "QUERY_REPO"
+
+# elif st.session_state.question_state == "QUERY_REPO":
+#     if "changes" in st.session_state:
+#         # INSERT PROCESSING CODE HERE
+#         with st.chat_message("assistant"):
+#             response = "Okay, one moment..."
+#             st.session_state.messages.append({"role": "assistant", "content": response})
+#             st.markdown(response)
+
+#         build_documents_and_graph(st.session_state.url)
+
+#         respond("Please describe the changes you would like to make:")
+#         st.session_state.question_state = "QUERY_CONTEXT"
+
+# elif st.session_state.question_state == "QUERY_CONTEXT":
+#     st.text("hello")
+#     user_input2 = st.chat_input("What's going on?")
+#     if user_input2:
+#         add_user_input(user_input2)
+#         # INSERT PROCESSING CODE HERE
+#         with st.chat_message("assistant"):
+#             response = "Okay, one moment..."
+#             st.session_state.messages.append({"role": "assistant", "content": response})
+#             st.markdown(response)
+#         response, relevant_chunks, helpful_chunks = run(st.session_state.url)
+#         with st.chat_message("assistant"):
+#             st.session_state.messages.append(
+#                 {"role": "assistant", "content": relevant_chunks}
+#             )
+#         respond("What next?", "QUERY_NEXT")
+
+# elif st.session_state.question_state == "QUERY_NEXT":
+#     if user_input3 := st.chat_input("What next?"):
+#         pass
+
+# st.text("made it to end ")
